@@ -11,10 +11,12 @@ import (
 
 	"log"
 
+	"github.com/JSchatten/go-diploma/internal/auth"
 	"github.com/JSchatten/go-diploma/internal/config"
 	gzipMiddleaware "github.com/JSchatten/go-diploma/internal/gzip"
 	"github.com/JSchatten/go-diploma/internal/handlers"
 	loggingMiddleware "github.com/JSchatten/go-diploma/internal/logging"
+	"github.com/JSchatten/go-diploma/internal/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -30,6 +32,22 @@ func main() {
 		logZero.Logger.Fatal().Err(err).Msg("Failed to init Server Flags")
 	}
 
+	// инициализация хранилища
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store, err := storage.NewPSQLStorage(ctx, cfg.DatabaseURI)
+	if err != nil {
+		logZero.Logger.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	defer store.Close()
+
+	err = store.Migarte(ctx)
+	if err != nil {
+		logZero.Logger.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	logZero.Logger.Info().Msg("Database connected")
+
 	// gin
 	gin.DefaultWriter = io.Discard
 	router := gin.New()
@@ -38,19 +56,25 @@ func main() {
 	router.Use(loggingMiddleware.LoggingMiddleware(logZero.Logger))
 	router.Use(gzipMiddleaware.GzipMiddleware())
 
+	authHandlers := auth.NewAuthHandlers(store)
+
 	// public routes
 	router.GET("/", handlers.Hello())
 	router.GET("/live", handlers.Hello())
-	router.GET("/protected", handlers.Hello())
-	router.POST("/api/user/register", handlers.Hello())
-	router.POST("/api/user/login", handlers.Hello())
+	router.POST("/api/user/register", authHandlers.RegisterHandler)
+	router.POST("/api/user/login", authHandlers.LoginHandler)
 
 	// protected routes
-	router.POST("/api/user/orders", handlers.Hello())
-	router.GET("/api/user/orders", handlers.Hello())
-	router.GET("/api/user/balance", handlers.Hello())
-	router.POST("/api/user/balance/withdraw", handlers.Hello())
-	router.GET("/api/user/withdrawals", handlers.Hello())
+	authorized := router.Group("/")
+	authorized.Use(authHandlers.AuthMiddleware)
+	{
+		authorized.GET("/protected", handlers.Hello())
+		authorized.POST("/api/user/orders", handlers.Hello())
+		authorized.GET("/api/user/orders", handlers.Hello())
+		authorized.GET("/api/user/balance", handlers.Hello())
+		authorized.POST("/api/user/balance/withdraw", handlers.Hello())
+		authorized.GET("/api/user/withdrawals", handlers.Hello())
+	}
 
 	// Запуск сервера в отдельной горутине
 	srv := &http.Server{
@@ -63,6 +87,8 @@ func main() {
 			logZero.Logger.Fatal().Err(err).Msg("Server failed to start")
 		}
 	}()
+
+	logZero.Logger.Info().Msg("Server started")
 
 	// Перехват сигналов завершения
 	quit := make(chan os.Signal, 1)

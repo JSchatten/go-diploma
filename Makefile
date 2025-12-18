@@ -27,3 +27,6 @@ test_coverage:
 	go tool cover -func=c.out
 	go tool cover -html=c.out -o=./coverage.html
 	go test ./... -coverprofile=c.out -race
+
+run_all: 
+	./cmd/accrual/accrual_linux_amd64 & go run ./cmd/gophermart/main.go -d="postgres://postgres:admin54321@localhost:5678/gophermart" -a="localhost:8081"
