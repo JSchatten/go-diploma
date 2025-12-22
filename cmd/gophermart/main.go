@@ -42,15 +42,18 @@ func main() {
 	}
 	defer store.Close()
 
-	err = store.Migarte(ctx)
+	err = store.Migrate(ctx)
 	if err != nil {
 		logZero.Logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	logZero.Logger.Info().Msg("Database connected")
 
 	// gin
-	gin.DefaultWriter = io.Discard
 	router := gin.New()
+	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		Output: io.Discard,
+	}))
+
 	router.RedirectFixedPath = false
 
 	router.Use(loggingMiddleware.LoggingMiddleware(logZero.Logger))
@@ -69,11 +72,11 @@ func main() {
 	authorized.Use(authHandlers.AuthMiddleware)
 	{
 		authorized.GET("/protected", handlers.Hello())
-		authorized.POST("/api/user/orders", handlers.Hello())
-		authorized.GET("/api/user/orders", handlers.Hello())
-		authorized.GET("/api/user/balance", handlers.Hello())
-		authorized.POST("/api/user/balance/withdraw", handlers.Hello())
-		authorized.GET("/api/user/withdrawals", handlers.Hello())
+		authorized.POST("/api/user/orders", handlers.AddOrderHandler(store))
+		authorized.GET("/api/user/orders", handlers.GetOrdersHandler(store))
+		authorized.GET("/api/user/balance", handlers.GetBalanceHandler(store))
+		authorized.POST("/api/user/balance/withdraw", handlers.WithdrawHandler(store))
+		authorized.GET("/api/user/withdrawals", handlers.GetWithdrawalsHandler(store))
 	}
 
 	// Запуск сервера в отдельной горутине

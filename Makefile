@@ -2,7 +2,9 @@ build_server_out_folder = ./build/server_out
 
 bs_out = $(build_server_out_folder)/server
 
-dsn_db = postgres://postgres:admin54321@localhost:5678/postgres
+# dsn_db = postgres://postgres:admin54321@localhost:5678/postgres
+dsn_db = postgres://postgres:admin54321@localhost:5678/gophermart
+
 
 src_server = ./cmd/gophermart/main.go
 

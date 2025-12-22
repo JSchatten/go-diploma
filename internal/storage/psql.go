@@ -3,9 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/JSchatten/go-diploma/internal/models"
+
 	"github.com/golang-migrate/migrate/v4"
 	pgxMigrate "github.com/golang-migrate/migrate/v4/database/pgx"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -39,7 +41,7 @@ func (s *PSQLStorage) Close() error {
 }
 
 // --- Balance ---
-func (s *PSQLStorage) Migarte(ctx context.Context) error {
+func (s *PSQLStorage) Migrate(ctx context.Context) error {
 	log.Logger.Info().Msg("PSQLStorage.Migrate")
 
 	if err := s.db.Ping(ctx); err != nil {
@@ -200,4 +202,97 @@ func (s *PSQLStorage) GetBalance(ctx context.Context, userID int64) (current, wi
     `, userID).Scan(&current, &withdrawn)
 
 	return current, withdrawn, err
+}
+
+func (s *PSQLStorage) GetAccrualsByUser(ctx context.Context, userID int64) ([]*models.BalanceOperation, error) {
+
+	rows, err := s.db.Query(ctx, `
+		SELECT order_number, amount, operation_type, status, processed_at
+		FROM balance_operations
+		WHERE user_id = $1 AND operation_type = 'accrual'
+		ORDER BY processed_at ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ops []*models.BalanceOperation
+	for rows.Next() {
+		op := &models.BalanceOperation{}
+		var opType string
+		if err := rows.Scan(&op.OrderNumber, &op.Amount, &opType, &op.Status, &op.ProcessedAt); err != nil {
+			return nil, err
+		}
+		op.OperationType = models.OperationType(opType)
+		op.UserID = userID
+
+		if op.Amount > 0 {
+			op.Accrual = op.Amount
+		}
+		ops = append(ops, op)
+	}
+	return ops, nil
+
+}
+func (s *PSQLStorage) GetWithdrawalsByUser(ctx context.Context, userID int64) ([]*models.BalanceOperation, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT order_number, amount, operation_type, status, processed_at
+		FROM balance_operations
+		WHERE user_id = $1 AND operation_type = 'withdrawal'
+		ORDER BY processed_at ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ops []*models.BalanceOperation
+	for rows.Next() {
+		op := &models.BalanceOperation{}
+		var opType string
+		if err := rows.Scan(&op.OrderNumber, &op.Amount, &opType, &op.Status, &op.ProcessedAt); err != nil {
+			return nil, err
+		}
+		op.OperationType = models.OperationType(opType)
+		op.UserID = userID
+
+		if op.Amount < 0 {
+			op.Sum = -op.Amount
+		}
+		ops = append(ops, op)
+	}
+	return ops, nil
+}
+
+func (s *PSQLStorage) GetOrder(ctx context.Context, number string) (*models.BalanceOperation, error) {
+	var op models.BalanceOperation
+	var opType string
+	var amount float64
+
+	err := s.db.QueryRow(ctx, `
+		SELECT user_id, amount, operation_type, status, processed_at
+		FROM balance_operations
+		WHERE order_number = $1 AND operation_type = 'accrual'
+	`, number).Scan(&op.UserID, &amount, &opType, &op.Status, &op.ProcessedAt)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrderNotFound
+		}
+		log.Error().Err(err).Str("number", number).Msg("Database error in GetOrder")
+		return nil, err
+	}
+
+	op.OrderNumber = number
+	op.OperationType = models.OperationType(opType)
+	op.Amount = amount
+
+	if op.Amount > 0 {
+		op.Accrual = op.Amount
+	} else if op.Amount < 0 {
+		op.Sum = -op.Amount
+	}
+
+	return &op, nil
 }
