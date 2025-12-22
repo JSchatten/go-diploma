@@ -193,13 +193,22 @@ func (s *PSQLStorage) GetOperationsByUser(ctx context.Context, userID int64) ([]
 // --- Balance ---
 
 func (s *PSQLStorage) GetBalance(ctx context.Context, userID int64) (current, withdrawn float64, err error) {
+	// err = s.db.QueryRow(ctx, `
+	//     SELECT
+	//         COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0),
+	//         COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0)
+	//     FROM balance_operations
+	//     WHERE user_id = $1 AND status = 'PROCESSED'
+	// `, userID).Scan(&current, &withdrawn)
+
+	// return current, withdrawn, err
 	err = s.db.QueryRow(ctx, `
-        SELECT
-            COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0),
-            COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0)
-        FROM balance_operations
-        WHERE user_id = $1 AND status = 'PROCESSED'
-    `, userID).Scan(&current, &withdrawn)
+		SELECT
+			COALESCE(SUM(amount), 0), -- сумма всех начислений, как будто ту была ошибка
+			COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0)
+		FROM balance_operations
+		WHERE user_id = $1 AND status = 'PROCESSED'
+	`, userID).Scan(&current, &withdrawn)
 
 	return current, withdrawn, err
 }
@@ -295,4 +304,55 @@ func (s *PSQLStorage) GetOrder(ctx context.Context, number string) (*models.Bala
 	}
 
 	return &op, nil
+}
+
+// GetNewOrders возвращает все заказы со статусом NEW
+func (s *PSQLStorage) GetNewOrders(ctx context.Context) ([]*models.BalanceOperation, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT order_number, user_id, amount, operation_type, status, processed_at
+		FROM balance_operations
+		WHERE operation_type = 'accrual' AND status = 'NEW'
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ops []*models.BalanceOperation
+	for rows.Next() {
+		op := &models.BalanceOperation{}
+		var opType string
+		if err := rows.Scan(&op.OrderNumber, &op.UserID, &op.Amount, &opType, &op.Status, &op.ProcessedAt); err != nil {
+			return nil, err
+		}
+		op.OperationType = models.OperationType(opType)
+		ops = append(ops, op)
+	}
+	return ops, nil
+}
+
+// UpdateOrderStatus обновляет статус и начисление
+func (s *PSQLStorage) UpdateOrderStatus(ctx context.Context, orderNumber string, status models.Status, accrual float64) error {
+	// Обновляем статус и начисление (если есть)
+	var query string
+	var args []interface{}
+
+	if accrual > 0 {
+		query = `
+			UPDATE balance_operations
+			SET status = $1, processed_at = NOW(), amount = $2
+			WHERE order_number = $3 AND operation_type = 'accrual'
+		`
+		args = []interface{}{string(status), accrual, orderNumber}
+	} else {
+		query = `
+			UPDATE balance_operations
+			SET status = $1, processed_at = NOW()
+			WHERE order_number = $2 AND operation_type = 'accrual'
+		`
+		args = []interface{}{string(status), orderNumber}
+	}
+
+	_, err := s.db.Exec(ctx, query, args...)
+	return err
 }

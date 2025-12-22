@@ -11,6 +11,7 @@ import (
 
 	"log"
 
+	"github.com/JSchatten/go-diploma/internal/accrual"
 	"github.com/JSchatten/go-diploma/internal/auth"
 	"github.com/JSchatten/go-diploma/internal/config"
 	gzipMiddleaware "github.com/JSchatten/go-diploma/internal/gzip"
@@ -33,22 +34,37 @@ func main() {
 	}
 
 	// инициализация хранилища
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctxDB, cancelDB := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelDB()
 
-	store, err := storage.NewPSQLStorage(ctx, cfg.DatabaseURI)
+	store, err := storage.NewPSQLStorage(ctxDB, cfg.DatabaseURI)
 	if err != nil {
 		logZero.Logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer store.Close()
 
-	err = store.Migrate(ctx)
+	err = store.Migrate(ctxDB)
 	if err != nil {
 		logZero.Logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	logZero.Logger.Info().Msg("Database connected")
 
+	// poller для accrual
+	var accrualClient *accrual.Client
+
+	ctxApp, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp() // БД отвалится в конце
+
+	// После инициализации store
+	accrualClient = accrual.NewClient(cfg.AccrualSystemAddr, store)
+
+	// Перед запуском сервера — запускаем poller
+	go accrualClient.StartPolling(ctxApp)
+
+	// Можно отправить сигнал остановки poller'у, если передашь context.Shutdown
+
 	// gin
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.LoggerWithConfig(gin.LoggerConfig{
 		Output: io.Discard,
@@ -99,10 +115,11 @@ func main() {
 	<-quit
 
 	logZero.Logger.Info().Msg("Shutting down server...")
+	cancelApp() // Это для poller-а, грохнем его контекст
 
 	// Контекст для graceful shutdown
 	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShut()
+	defer cancelShut() // это для сервера
 
 	// Останавливаем сервер
 	if err := srv.Shutdown(ctxShut); err != nil {

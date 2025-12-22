@@ -28,7 +28,13 @@ type Storage interface {
 	// Баланс
 	GetBalance(ctx context.Context, userID int64) (current, withdrawn float64, err error)
 
-	// Миграции
+	// Для accrual-сервиса
+	// заказы со статусом NEW
+	GetNewOrders(ctx context.Context) ([]*models.BalanceOperation, error)
+	// Обновить статус заказа и начисление
+	UpdateOrderStatus(ctx context.Context, orderNumber string, status models.Status, accrual float64) error
+
+	// Миграция
 	Migrate(ctx context.Context) error
 }
 

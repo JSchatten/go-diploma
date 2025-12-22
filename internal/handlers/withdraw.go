@@ -19,6 +19,7 @@ func WithdrawHandler(store storage.Storage) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		userId := userID.(int64)
 
 		var req models.WithdrawRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -40,7 +41,7 @@ func WithdrawHandler(store storage.Storage) gin.HandlerFunc {
 		}
 
 		op := &models.BalanceOperation{
-			UserID:        userID.(int64),
+			UserID:        userId,
 			OrderNumber:   req.Order,
 			Amount:        -req.Sum,
 			OperationType: models.WithdrawalOp,
@@ -50,7 +51,7 @@ func WithdrawHandler(store storage.Storage) gin.HandlerFunc {
 
 		if err := store.CreateOperation(c.Request.Context(), op); err != nil {
 			if err == storage.ErrNoMoney {
-				log.Warn().Int64("user_id", userID.(int64)).Float64("sum", req.Sum).Msg("Insufficient funds")
+				log.Warn().Int64("user_id", userId).Float64("sum", req.Sum).Msg("Insufficient funds")
 				c.AbortWithStatusJSON(http.StatusPaymentRequired, gin.H{"error": "Insufficient funds"})
 				return
 			}
@@ -59,7 +60,7 @@ func WithdrawHandler(store storage.Storage) gin.HandlerFunc {
 			return
 		}
 
-		log.Info().Int64("user_id", userID.(int64)).Float64("sum", req.Sum).Str("order", req.Order).Msg("Withdrawal successful")
+		log.Info().Int64("user_id", userId).Float64("sum", req.Sum).Str("order", req.Order).Msg("Withdrawal successful")
 		c.AbortWithStatusJSON(http.StatusOK, gin.H{"error": "Withdrawal successful"})
 	}
 }
@@ -72,8 +73,9 @@ func GetWithdrawalsHandler(store storage.Storage) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		userId := userID.(int64)
 
-		ops, err := store.GetWithdrawalsByUser(c.Request.Context(), userID.(int64))
+		ops, err := store.GetWithdrawalsByUser(c.Request.Context(), userId)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to load withdrawals")
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal error"})
@@ -81,7 +83,7 @@ func GetWithdrawalsHandler(store storage.Storage) gin.HandlerFunc {
 		}
 
 		if len(ops) == 0 {
-			log.Debug().Int64("user_id", userID.(int64)).Msg("No withdrawals found")
+			log.Debug().Int64("user_id", userId).Msg("No withdrawals found")
 			c.AbortWithStatusJSON(http.StatusNoContent, gin.H{"error": "No withdrawals found"})
 			return
 		}

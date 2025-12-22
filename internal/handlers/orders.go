@@ -94,8 +94,9 @@ func GetOrdersHandler(store storage.Storage) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		userId := userID.(int64)
 
-		ops, err := store.GetAccrualsByUser(c.Request.Context(), userID.(int64))
+		ops, err := store.GetAccrualsByUser(c.Request.Context(), userId)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to load orders")
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal error"})
@@ -103,7 +104,7 @@ func GetOrdersHandler(store storage.Storage) gin.HandlerFunc {
 		}
 
 		if len(ops) == 0 {
-			log.Debug().Int64("user_id", userID.(int64)).Msg("No orders found")
+			log.Debug().Int64("user_id", userId).Msg("No orders found")
 			c.AbortWithStatusJSON(http.StatusNoContent, gin.H{"error": "No orders found"})
 			return
 		}

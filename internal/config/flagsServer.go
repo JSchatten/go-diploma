@@ -1,4 +1,3 @@
-// internal/config/flags.go
 package config
 
 import (
