@@ -50,11 +50,8 @@ func main() {
 	}
 	logZero.Logger.Info().Msg("Database connected")
 
-	// poller для accrual
-	var accrualClient *accrual.Client
-
-	// После инициализации store
-	accrualClient = accrual.NewClient(cfg.AccrualSystemAddr, store)
+	// После инициализации store poller для accrual
+	accrualClient := accrual.NewClient(cfg.AccrualSystemAddr, store)
 
 	// gin
 	gin.SetMode(gin.ReleaseMode)
