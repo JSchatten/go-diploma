@@ -41,21 +41,33 @@ func NewClient(accrualURL string, store storage.Storage) *Client {
 }
 
 // StartPolling запускает фоновый опрос статусов
-func (c *Client) StartPolling(ctx context.Context) {
+func (c *Client) StartPolling(ctx context.Context) error {
 	log.Info().Msg("Starting accrual status poller")
 
+	// ticker := time.NewTicker(PollInterval)
+	// defer ticker.Stop()
+
+	// for {
+	// 	select {
+	// 	case <-ctx.Done():
+	// 		log.Info().Msg("Shutting down accrual poller")
+	// 		return
+	// 	case <-ticker.C:
+	// 		c.pollOrders()
+	// 	}
+	// }
 	ticker := time.NewTicker(PollInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info().Msg("Shutting down accrual poller")
-			return
+			return ctx.Err()
 		case <-ticker.C:
 			c.pollOrders()
 		}
 	}
+
 }
 
 // pollOrders находит заказы со статусом NEW и проверяет их у accrual

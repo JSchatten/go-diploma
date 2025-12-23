@@ -18,6 +18,7 @@ import (
 	"github.com/JSchatten/go-diploma/internal/handlers"
 	loggingMiddleware "github.com/JSchatten/go-diploma/internal/logging"
 	"github.com/JSchatten/go-diploma/internal/storage"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -52,16 +53,8 @@ func main() {
 	// poller для accrual
 	var accrualClient *accrual.Client
 
-	ctxApp, cancelApp := context.WithCancel(context.Background())
-	defer cancelApp() // БД отвалится в конце
-
 	// После инициализации store
 	accrualClient = accrual.NewClient(cfg.AccrualSystemAddr, store)
-
-	// Перед запуском сервера — запускаем poller
-	go accrualClient.StartPolling(ctxApp)
-
-	// Можно отправить сигнал остановки poller'у, если передашь context.Shutdown
 
 	// gin
 	gin.SetMode(gin.ReleaseMode)
@@ -100,32 +93,42 @@ func main() {
 		Addr:    cfg.RunAddress,
 		Handler: router,
 	}
-	go func() {
-		logZero.Logger.Info().Msgf("Server starting at %s", cfg.RunAddress)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logZero.Logger.Fatal().Err(err).Msg("Server failed to start")
-		}
-	}()
 
+	ctxApp, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
+	g, ctxApp := errgroup.WithContext(ctxApp)
+
+	g.Go(
+		func() error {
+			logZero.Logger.Info().Msgf("Server starting at %s", cfg.RunAddress)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logZero.Logger.Fatal().Err(err).Msg("Server failed to start")
+				return err
+			}
+			return nil
+
+		},
+	)
 	logZero.Logger.Info().Msg("Server started")
 
-	// Перехват сигналов завершения
+	// После  запуска сервера — запускаем poller
+	g.Go(func() error {
+		return accrualClient.StartPolling(ctxApp)
+	})
+	logZero.Logger.Info().Msg("Poling accrual started")
+
+	// // Перехват сигналов завершения
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+	logZero.Logger.Info().Msg("Shutting down...")
+	cancelApp()
 
-	logZero.Logger.Info().Msg("Shutting down server...")
-	cancelApp() // Это для poller-а, грохнем его контекст
-
-	// Контекст для graceful shutdown
-	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShut() // это для сервера
-
-	// Останавливаем сервер
-	if err := srv.Shutdown(ctxShut); err != nil {
-		logZero.Logger.Fatal().Err(err).Msg("Server forced to shutdown")
+	if err := srv.Shutdown(context.Background()); err != nil {
+		logZero.Logger.Error().Err(err).Msg("Server shutdown failed")
 	}
 
-	logZero.Logger.Info().Msg("Server exited gracefully")
+	logZero.Logger.Info().Msg("Application exited gracefully")
 
 }
