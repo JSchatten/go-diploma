@@ -45,5 +45,5 @@ var (
 	ErrNoMoney       = errors.New("insufficient funds")
 	ErrOrderExists   = errors.New("order already exists")
 	ErrOrderMine     = errors.New("order belongs to another user")
-	ErrOrderNotFound = errors.New("Order not found")
+	ErrOrderNotFound = errors.New("order not found")
 )
