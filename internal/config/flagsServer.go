@@ -11,11 +11,13 @@ type ServerFlags struct {
 	RunAddress        string // Адрес и порт запуска HTTP-сервера
 	DatabaseURI       string // DSN для подключения к PostgreSQL
 	AccrualSystemAddr string // Адрес внешней системы расчёта начислений
+	JwtKey            string // JWT
 }
 
 const (
 	defaultRunAddress       = "localhost:8080"
 	defaultAccrualSystemURL = "http://localhost:8081"
+	defaultJWTKey           = "super-secret-key-please-change-in-production"
 )
 
 // InitServerFlags инициализирует флаги и переменные окружения
@@ -24,11 +26,13 @@ func InitServerFlags() (*ServerFlags, error) {
 		runAddr           = new(string)
 		databaseURI       = new(string)
 		accrualSystemAddr = new(string)
+		jwtKey            = new(string)
 	)
 
 	// Установим значения по умолчанию
 	*runAddr = defaultRunAddress
 	*accrualSystemAddr = defaultAccrualSystemURL
+	*jwtKey = defaultJWTKey
 
 	// Читаем переменные окружения (имеют приоритет)
 	if v, exists := os.LookupEnv("RUN_ADDRESS"); exists {
@@ -40,11 +44,15 @@ func InitServerFlags() (*ServerFlags, error) {
 	if v, exists := os.LookupEnv("ACCRUAL_SYSTEM_ADDRESS"); exists {
 		*accrualSystemAddr = v
 	}
+	if v, exists := os.LookupEnv("JWT_KEY"); exists {
+		*jwtKey = v
+	}
 
 	// Определяем флаги
 	flag.StringVar(runAddr, "a", *runAddr, fmt.Sprintf("Server address and port (default: %s)", defaultRunAddress))
 	flag.StringVar(databaseURI, "d", *databaseURI, "Database connection URI")
 	flag.StringVar(accrualSystemAddr, "r", *accrualSystemAddr, fmt.Sprintf("Accrual system address (default: %s)", defaultAccrualSystemURL))
+	flag.StringVar(jwtKey, "j", *jwtKey, fmt.Sprintf("JWT secret for auth (default: %s), need to change!", defaultJWTKey))
 
 	// Парсим флаги
 	flag.Parse()
@@ -82,5 +90,6 @@ func InitServerFlags() (*ServerFlags, error) {
 		RunAddress:        *runAddr,
 		DatabaseURI:       *databaseURI,
 		AccrualSystemAddr: *accrualSystemAddr,
+		JwtKey:            *jwtKey,
 	}, nil
 }

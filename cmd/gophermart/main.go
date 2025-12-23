@@ -75,7 +75,7 @@ func main() {
 	router.Use(loggingMiddleware.LoggingMiddleware(logZero.Logger))
 	router.Use(gzipMiddleaware.GzipMiddleware())
 
-	authHandlers := auth.NewAuthHandlers(store)
+	authHandlers := auth.NewAuthHandlers(store, cfg.JwtKey)
 
 	// public routes
 	router.GET("/", handlers.Hello())

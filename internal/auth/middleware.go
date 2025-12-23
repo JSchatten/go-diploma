@@ -23,7 +23,7 @@ func (h *AuthHandlers) AuthMiddleware(c *gin.Context) {
 		return
 	}
 
-	claims, err := ParseToken(tokenString)
+	claims, err := ParseToken(tokenString, h.jwtKey)
 	if err != nil {
 		if err == jwt.ErrSignatureInvalid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token signature"})

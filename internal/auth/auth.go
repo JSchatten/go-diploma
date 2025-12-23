@@ -11,15 +11,13 @@ const (
 	expireTime = 1 * time.Hour
 )
 
-var jwtKey = []byte("super-secret-key-please-change-in-production") // НЕ используй в проде!
-
 type Claims struct {
 	UserID int64  `json:"user_id"`
 	Login  string `json:"login"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(userID int64, login string) (string, error) {
+func GenerateToken(userID int64, login string, jwtKey []byte) (string, error) {
 	expirationTime := time.Now().Add(expireTime)
 
 	claims := &Claims{
@@ -42,7 +40,7 @@ func GenerateToken(userID int64, login string) (string, error) {
 	return tokenString, nil
 }
 
-func ParseToken(tokenString string) (*Claims, error) {
+func ParseToken(tokenString string, jwtKey []byte) (*Claims, error) {
 	claims := &Claims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return jwtKey, nil

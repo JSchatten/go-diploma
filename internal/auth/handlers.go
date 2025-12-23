@@ -12,10 +12,11 @@ import (
 
 type AuthHandlers struct {
 	storage storage.Storage
+	jwtKey  []byte
 }
 
-func NewAuthHandlers(storage storage.Storage) *AuthHandlers {
-	return &AuthHandlers{storage: storage}
+func NewAuthHandlers(storage storage.Storage, jwtSecret string) *AuthHandlers {
+	return &AuthHandlers{storage: storage, jwtKey: []byte(jwtSecret)}
 }
 
 // RegisterHandler регистрирует нового пользователя
@@ -51,7 +52,7 @@ func (h *AuthHandlers) RegisterHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := GenerateToken(userID, req.Login)
+	token, err := GenerateToken(userID, req.Login, h.jwtKey)
 	if err != nil {
 		log.Logger.Error().Err(err).Msg("Failed to generate token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
@@ -94,7 +95,7 @@ func (h *AuthHandlers) LoginHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := GenerateToken(userID, req.Login)
+	token, err := GenerateToken(userID, req.Login, h.jwtKey)
 	if err != nil {
 		log.Logger.Error().Err(err).Msg("Failed to generate token")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
