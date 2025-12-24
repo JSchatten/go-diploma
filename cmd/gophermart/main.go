@@ -17,6 +17,7 @@ import (
 	gzipMiddleaware "github.com/JSchatten/go-diploma/internal/gzip"
 	"github.com/JSchatten/go-diploma/internal/handlers"
 	loggingMiddleware "github.com/JSchatten/go-diploma/internal/logging"
+	"github.com/JSchatten/go-diploma/internal/service"
 	"github.com/JSchatten/go-diploma/internal/storage"
 	"golang.org/x/sync/errgroup"
 
@@ -53,6 +54,10 @@ func main() {
 	// После инициализации store poller для accrual
 	accrualClient := accrual.NewClient(cfg.AccrualSystemAddr, store)
 
+	//
+	balanceService := service.NewBalanceService(store)
+	orderService := service.NewOrderService(store)
+
 	// gin
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -78,11 +83,12 @@ func main() {
 	authorized.Use(authHandlers.AuthMiddleware)
 	{
 		authorized.GET("/protected", handlers.Hello())
-		authorized.POST("/api/user/orders", handlers.AddOrderHandler(store))
-		authorized.GET("/api/user/orders", handlers.GetOrdersHandler(store))
-		authorized.GET("/api/user/balance", handlers.GetBalanceHandler(store))
-		authorized.POST("/api/user/balance/withdraw", handlers.WithdrawHandler(store))
-		authorized.GET("/api/user/withdrawals", handlers.GetWithdrawalsHandler(store))
+		authorized.POST("/api/user/orders", handlers.AddOrderHandler(orderService))
+		authorized.GET("/api/user/orders", handlers.GetOrdersHandler(orderService))
+		authorized.GET("/api/user/balance", handlers.GetBalanceHandler(balanceService))
+		authorized.POST("/api/user/balance/withdraw", handlers.WithdrawHandler(balanceService))
+		// GetWithdrawalsHandler простой, логика там минимальная и я бы оставил, но раз начали
+		authorized.GET("/api/user/withdrawals", handlers.GetWithdrawalsHandler(balanceService))
 	}
 
 	// Запуск сервера в отдельной горутине
