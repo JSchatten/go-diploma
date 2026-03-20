@@ -1,0 +1,26 @@
+tmp/*
+*.log
+.DS_Store
+README.md
+.git
+.db_store
+
+
+# IDEs directories
+.idea
+.vscode
+
+# binary test
+metricstest
+metricstest_v2
+gophermarttest
+
+# binary output build
+build/
+
+# Air
+tmp/
+
+# logs from stdout
+*.log
+*.txt
